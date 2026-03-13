@@ -13,7 +13,8 @@ const GROQ_API_KEY = process.env.GROQ_API_KEY || 'YOUR_GROQ_API_KEY';
 const VERIFY_TOKEN = process.env.VERIFY_TOKEN || 'bakery123';
 const WHATSAPP_TOKEN = process.env.WHATSAPP_TOKEN || 'YOUR_WHATSAPP_TOKEN';
 const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID || 'YOUR_PHONE_NUMBER_ID';
-const OWNER_PHONE = process.env.OWNER_PHONE || 'YOUR_OWNER_WHATSAPP_NUMBER'; // e.g. 923001234567
+const OWNER_PHONE = process.env.OWNER_PHONE || 'YOUR_OWNER_WHATSAPP_NUMBER';
+const SHEETDB_URL = process.env.SHEETDB_URL || 'YOUR_SHEETDB_URL';
 
 // =============================================
 // BAKERY PRODUCTS LIST
@@ -52,7 +53,28 @@ setInterval(() => {
 }, 60000);
 
 // =============================================
-// GEMINI AI - ORDER PARSER
+// GOOGLE SHEETS - ORDER SAVE
+// =============================================
+async function saveToSheet(customerName, phone, orders) {
+  try {
+    const items = orders.map(o => `${o.product}(${o.quantity})`).join(', ');
+    await axios.post(SHEETDB_URL, {
+      data: {
+        Timestamp: new Date().toLocaleString('en-PK', { timeZone: 'Asia/Karachi' }),
+        Phone: phone,
+        Name: customerName,
+        Order: items,
+        Status: 'Pending'
+      }
+    });
+    console.log('Sheet mein save ho gaya:', phone);
+  } catch (err) {
+    console.error('Sheet error:', err.message);
+  }
+}
+
+// =============================================
+// GROQ AI - ORDER PARSER
 // =============================================
 async function parseOrderWithAI(message, customerName) {
   const prompt = `
@@ -148,7 +170,6 @@ function formatOwnerSummary() {
   const customers = Object.keys(todaysOrders);
   if (customers.length === 0) return null;
 
-  // Tally totals
   const totals = {};
   PRODUCTS.forEach(p => totals[p] = 0);
 
@@ -199,7 +220,7 @@ app.get('/webhook', (req, res) => {
 // WEBHOOK - INCOMING MESSAGES
 // =============================================
 app.post('/webhook', async (req, res) => {
-  res.sendStatus(200); // Acknowledge immediately
+  res.sendStatus(200);
 
   try {
     const body = req.body;
@@ -216,11 +237,9 @@ app.post('/webhook', async (req, res) => {
     const from = msg.from;
     const msgType = msg.type;
 
-    // Get customer name from contacts
     const contacts = value?.contacts;
     const customerName = contacts?.[0]?.profile?.name || 'Customer';
 
-    // Only handle text messages
     if (msgType !== 'text') {
       await sendWhatsAppMessage(from,
         `Salam ${customerName} bhai! 😊\n\nSirf text mein order likhein please.\n\nJaise:\n"10 jumbo bread choti\n5 sheermal\n3 gol papa"`
@@ -230,9 +249,7 @@ app.post('/webhook', async (req, res) => {
 
     const text = msg.text.body.trim().toLowerCase();
 
-    // COMMANDS
     if (text === 'summary' || text === 'report' || text === 'orders') {
-      // Only owner can see summary
       if (from === OWNER_PHONE) {
         const summary = formatOwnerSummary();
         if (summary) {
@@ -254,7 +271,6 @@ app.post('/webhook', async (req, res) => {
       return;
     }
 
-    // PARSE ORDER WITH AI
     const parsed = await parseOrderWithAI(text, customerName);
 
     if (!parsed.understood || parsed.orders.length === 0) {
@@ -264,7 +280,7 @@ app.post('/webhook', async (req, res) => {
       return;
     }
 
-    // Save order
+    // Save order in memory
     todaysOrders[from] = {
       name: customerName,
       phone: from,
@@ -275,6 +291,9 @@ app.post('/webhook', async (req, res) => {
     // Confirm to customer
     const confirmation = formatOrderConfirmation(customerName, parsed.orders);
     await sendWhatsAppMessage(from, confirmation);
+
+    // Save to Google Sheet
+    await saveToSheet(customerName, from, parsed.orders);
 
     // Notify owner
     if (OWNER_PHONE && from !== OWNER_PHONE) {
@@ -343,7 +362,6 @@ app.get('/', (req, res) => {
   <br><br>
   <div class="grid">`;
 
-  // Total summary card
   html += `<div class="total-card"><h2>📊 AAJ KA TOTAL</h2>`;
   let hasAny = false;
   PRODUCTS.forEach(p => {
@@ -355,7 +373,6 @@ app.get('/', (req, res) => {
   if (!hasAny) html += `<p style="color:rgba(255,255,255,0.6);font-size:14px;margin-top:10px;">Abhi tak koi order nahi</p>`;
   html += `</div>`;
 
-  // Individual orders
   html += `<div class="card"><h2>👥 CUSTOMERS <span class="badge">${customers.length}</span></h2>`;
   if (customers.length === 0) {
     html += `<div class="empty">Koi order nahi abhi tak</div>`;
