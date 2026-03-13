@@ -9,7 +9,7 @@ app.use(bodyParser.urlencoded({ extended: true }));
 // =============================================
 // CONFIG - APNI VALUES YAHAN DAALEN
 // =============================================
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY || 'YOUR_GEMINI_API_KEY';
+const GROQ_API_KEY = process.env.GROQ_API_KEY || 'YOUR_GROQ_API_KEY';
 const VERIFY_TOKEN = process.env.VERIFY_TOKEN || 'bakery123';
 const WHATSAPP_TOKEN = process.env.WHATSAPP_TOKEN || 'YOUR_WHATSAPP_TOKEN';
 const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID || 'YOUR_PHONE_NUMBER_ID';
@@ -80,31 +80,27 @@ Sirf JSON, koi markdown nahi.
 `;
 
   try {
-    const models = ['gemini-1.5-flash-8b', 'gemini-1.5-flash', 'gemini-2.0-flash'];
-    let response;
-    for (const model of models) {
-      try {
-        response = await axios.post(
-          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`,
-          {
-            contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: { temperature: 0.1, maxOutputTokens: 500 }
-          }
-        );
-        break;
-      } catch (e) {
-        if (e.response?.status === 429 && model !== models[models.length - 1]) {
-          continue;
+    const response = await axios.post(
+      'https://api.groq.com/openai/v1/chat/completions',
+      {
+        model: 'llama-3.1-8b-instant',
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.1,
+        max_tokens: 500
+      },
+      {
+        headers: {
+          'Authorization': `Bearer ${GROQ_API_KEY}`,
+          'Content-Type': 'application/json'
         }
-        throw e;
       }
-    }
+    );
 
-    const text = response.data.candidates[0].content.parts[0].text;
+    const text = response.data.choices[0].message.content;
     const clean = text.replace(/```json|```/g, '').trim();
     return JSON.parse(clean);
   } catch (err) {
-    console.error('Gemini error:', err.message);
+    console.error('Groq error:', err.response?.data || err.message);
     return { understood: false, orders: [], message: 'AI error' };
   }
 }
