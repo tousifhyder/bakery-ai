@@ -80,13 +80,25 @@ Sirf JSON, koi markdown nahi.
 `;
 
   try {
-    const response = await axios.post(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,
-      {
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.1, maxOutputTokens: 500 }
+    const models = ['gemini-1.5-flash-8b', 'gemini-1.5-flash', 'gemini-2.0-flash'];
+    let response;
+    for (const model of models) {
+      try {
+        response = await axios.post(
+          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`,
+          {
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: { temperature: 0.1, maxOutputTokens: 500 }
+          }
+        );
+        break;
+      } catch (e) {
+        if (e.response?.status === 429 && model !== models[models.length - 1]) {
+          continue;
+        }
+        throw e;
       }
-    );
+    }
 
     const text = response.data.candidates[0].content.parts[0].text;
     const clean = text.replace(/```json|```/g, '').trim();
