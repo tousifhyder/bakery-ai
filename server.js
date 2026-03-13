@@ -55,14 +55,13 @@ setInterval(() => {
 // =============================================
 // GOOGLE SHEETS - ORDER SAVE
 // =============================================
-async function saveToSheet(customerName, phone, orders) {
+async function saveToSheet(phone, orders) {
   try {
     const items = orders.map(o => `${o.product}(${o.quantity})`).join(', ');
     await axios.post(SHEETDB_URL, {
       data: {
         Timestamp: new Date().toLocaleString('en-PK', { timeZone: 'Asia/Karachi' }),
         Phone: phone,
-        Name: customerName,
         Order: items,
         Status: 'Pending'
       }
@@ -76,7 +75,7 @@ async function saveToSheet(customerName, phone, orders) {
 // =============================================
 // GROQ AI - ORDER PARSER
 // =============================================
-async function parseOrderWithAI(message, customerName) {
+async function parseOrderWithAI(message) {
   const prompt = `
 Tum ek bakery order parser ho. Customer ne yeh message bheja hai:
 "${message}"
@@ -92,8 +91,7 @@ Sirf JSON format mein jawab do, koi aur text nahi:
   "orders": [
     {"product": "exact product name from list", "quantity": number}
   ],
-  "understood": true/false,
-  "message": "agar kuch samajh na aaye to yahan likho"
+  "understood": true/false
 }
 
 Agar koi product list mein nahi hai, ignore karo.
@@ -123,7 +121,7 @@ Sirf JSON, koi markdown nahi.
     return JSON.parse(clean);
   } catch (err) {
     console.error('Groq error:', err.response?.data || err.message);
-    return { understood: false, orders: [], message: 'AI error' };
+    return { understood: false, orders: [] };
   }
 }
 
@@ -153,10 +151,10 @@ async function sendWhatsAppMessage(to, message) {
 }
 
 // =============================================
-// FORMAT ORDER SUMMARY
+// FORMAT ORDER CONFIRMATION
 // =============================================
-function formatOrderConfirmation(customerName, orders) {
-  let msg = `✅ Shukriya ${customerName} bhai!\n\nAapka order note ho gaya:\n`;
+function formatOrderConfirmation(orders) {
+  let msg = `✅ Aapka order note ho gaya:\n`;
   msg += `─────────────────\n`;
   orders.forEach(o => {
     msg += `📦 ${o.product}: ${o.quantity}\n`;
@@ -178,7 +176,7 @@ function formatOwnerSummary() {
 
   customers.forEach((phone, i) => {
     const order = todaysOrders[phone];
-    msg += `${i + 1}. ${order.name} (${phone})\n`;
+    msg += `${i + 1}. ${phone}\n`;
     order.items.forEach(item => {
       msg += `   • ${item.product}: ${item.quantity}\n`;
       if (totals[item.product] !== undefined) {
@@ -237,18 +235,12 @@ app.post('/webhook', async (req, res) => {
     const from = msg.from;
     const msgType = msg.type;
 
-    const contacts = value?.contacts;
-    const customerName = contacts?.[0]?.profile?.name || 'Customer';
-
-    if (msgType !== 'text') {
-      await sendWhatsAppMessage(from,
-        `Salam ${customerName} bhai! 😊\n\nSirf text mein order likhein please.\n\nJaise:\n"10 jumbo bread choti\n5 sheermal\n3 gol papa"`
-      );
-      return;
-    }
+    // Non-text messages — ignore silently
+    if (msgType !== 'text') return;
 
     const text = msg.text.body.trim().toLowerCase();
 
+    // Owner summary command
     if (text === 'summary' || text === 'report' || text === 'orders') {
       if (from === OWNER_PHONE) {
         const summary = formatOwnerSummary();
@@ -261,6 +253,7 @@ app.post('/webhook', async (req, res) => {
       return;
     }
 
+    // Menu command
     if (text === 'list' || text === 'products' || text === 'menu') {
       let menuMsg = `🥖 *BAKERY PRODUCTS LIST*\n─────────────────\n`;
       PRODUCTS.forEach((p, i) => {
@@ -271,34 +264,32 @@ app.post('/webhook', async (req, res) => {
       return;
     }
 
-    const parsed = await parseOrderWithAI(text, customerName);
+    // Parse order with AI
+    const parsed = await parseOrderWithAI(text);
 
+    // Agar order samajh nahi aaya — koi reply nahi
     if (!parsed.understood || parsed.orders.length === 0) {
-      await sendWhatsAppMessage(from,
-        `Salam ${customerName} bhai! 😊\n\nMujhe order samajh nahi aaya.\n\nIs tarah likhein:\n"10 jumbo bread\n5 sheermal\n3 gol papa"\n\nYa "list" likhein products dekhne ke liye.`
-      );
       return;
     }
 
     // Save order in memory
     todaysOrders[from] = {
-      name: customerName,
       phone: from,
       items: parsed.orders,
       time: new Date().toLocaleTimeString('en-PK', { timeZone: 'Asia/Karachi' })
     };
 
     // Confirm to customer
-    const confirmation = formatOrderConfirmation(customerName, parsed.orders);
+    const confirmation = formatOrderConfirmation(parsed.orders);
     await sendWhatsAppMessage(from, confirmation);
 
     // Save to Google Sheet
-    await saveToSheet(customerName, from, parsed.orders);
+    await saveToSheet(from, parsed.orders);
 
     // Notify owner
     if (OWNER_PHONE && from !== OWNER_PHONE) {
       let ownerNotif = `🔔 *NAYA ORDER*\n`;
-      ownerNotif += `👤 ${customerName} (${from})\n`;
+      ownerNotif += `📞 ${from}\n`;
       ownerNotif += `─────────────────\n`;
       parsed.orders.forEach(o => {
         ownerNotif += `📦 ${o.product}: ${o.quantity}\n`;
@@ -344,7 +335,7 @@ app.get('/', (req, res) => {
     .order-row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #f5f5f5; font-size: 14px; }
     .order-row:last-child { border: none; }
     .qty { font-weight: bold; color: #e63946; }
-    .customer-name { font-weight: bold; color: #1d3557; }
+    .customer-phone { font-weight: bold; color: #1d3557; }
     .customer-time { font-size: 11px; color: #999; }
     .total-card { background: #1d3557; color: white; border-radius: 12px; padding: 16px; }
     .total-card h2 { color: white; margin-bottom: 12px; border-bottom: 2px solid rgba(255,255,255,0.2); padding-bottom: 8px; }
@@ -380,7 +371,7 @@ app.get('/', (req, res) => {
     customers.forEach(phone => {
       const o = todaysOrders[phone];
       html += `<div style="margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid #f0f0f0;">`;
-      html += `<div class="customer-name">${o.name}</div>`;
+      html += `<div class="customer-phone">📞 ${phone}</div>`;
       html += `<div class="customer-time">⏰ ${o.time}</div>`;
       o.items.forEach(item => {
         html += `<div class="order-row"><span>${item.product}</span><span class="qty">${item.quantity}</span></div>`;
