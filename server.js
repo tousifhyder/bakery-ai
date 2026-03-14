@@ -20,13 +20,29 @@ const SHEETDB_URL = process.env.SHEETDB_URL || 'YOUR_SHEETDB_URL';
 // BAKERY PRODUCTS LIST
 // =============================================
 const PRODUCTS = [
-  'Jumbo Bread Choti',
-  'Jumbo Bread Bari',
+  '150 Gram Cake',
   'T3 Papa',
   'Slice Papa',
+  'Badam Papa',
   'Gol Papa',
+  'Sugar Free Papa',
+  'Jumbo Bread Bari',
+  'Jumbo Bread Choti',
+  'Milky Bari',
+  'Milky Choti',
+  'Sada Bari',
+  'Sada Choti',
+  'Sugar Free Bread',
   'Sheermal',
-  'Phool Bun'
+  'Phool Bun',
+  'Cream Bun',
+  'Fruit Bun Bara',
+  'Mix Biscuit',
+  'Cream Roll',
+  '250 Gram Cake',
+  'Sindi Cup',
+  'Plain Cake 1P',
+  'Dry Cake 1P'
 ];
 
 // =============================================
@@ -84,7 +100,8 @@ Bakery ke products yeh hain:
 ${PRODUCTS.map((p, i) => `${i + 1}. ${p}`).join('\n')}
 
 Customer Roman Urdu, Urdu, Sindhi, ya English mein likh sakta hai. Spelling mistakes bhi ho sakti hain.
-Jaise "bored" = Bread, "paapy/papy/papay" = Papa, "shrmaal/shirmal" = Sheermal, etc.
+Jaise "bored" = Bread, "paapy/papy/papay" = Papa, "shrmaal/shirmal" = Sheermal,
+"milki/milky" = Milky, "sada/saada" = Sada, "krim/cream" = Cream, "phool/phul" = Phool, etc.
 
 Sirf JSON format mein jawab do, koi aur text nahi:
 {
