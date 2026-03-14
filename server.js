@@ -35,6 +35,9 @@ const PRODUCTS = [
 let todaysOrders = {};
 let orderDate = getTodayDate();
 
+// Duplicate message prevention
+const processedMessages = new Set();
+
 function getTodayDate() {
   return new Date().toLocaleDateString('en-PK', { 
     timeZone: 'Asia/Karachi',
@@ -233,7 +236,17 @@ app.post('/webhook', async (req, res) => {
 
     const msg = messages[0];
     const from = msg.from;
+    const msgId = msg.id;
     const msgType = msg.type;
+
+    // Duplicate check — same message ID dobara aaye toh ignore
+    if (processedMessages.has(msgId)) {
+      console.log('Duplicate message ignore kiya:', msgId);
+      return;
+    }
+    processedMessages.add(msgId);
+    // 10 minute baad ID hata do memory se
+    setTimeout(() => processedMessages.delete(msgId), 10 * 60 * 1000);
 
     // Non-text messages — ignore silently
     if (msgType !== 'text') return;
