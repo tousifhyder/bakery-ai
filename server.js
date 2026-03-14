@@ -7,7 +7,7 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
 // =============================================
-// CONFIG - APNI VALUES YAHAN DAALEN
+// CONFIG
 // =============================================
 const GROQ_API_KEY = process.env.GROQ_API_KEY || 'YOUR_GROQ_API_KEY';
 const VERIFY_TOKEN = process.env.VERIFY_TOKEN || 'bakery123';
@@ -34,8 +34,6 @@ const PRODUCTS = [
 // =============================================
 let todaysOrders = {};
 let orderDate = getTodayDate();
-
-// Duplicate message prevention
 const processedMessages = new Set();
 
 function getTodayDate() {
@@ -45,7 +43,6 @@ function getTodayDate() {
   });
 }
 
-// Reset orders at midnight
 setInterval(() => {
   const today = getTodayDate();
   if (today !== orderDate) {
@@ -129,7 +126,7 @@ Sirf JSON, koi markdown nahi.
 }
 
 // =============================================
-// WHATSAPP MESSAGE SENDER
+// WHATSAPP MESSAGE SENDER — returns true/false
 // =============================================
 async function sendWhatsAppMessage(to, message) {
   try {
@@ -148,8 +145,10 @@ async function sendWhatsAppMessage(to, message) {
         }
       }
     );
+    return true;
   } catch (err) {
     console.error('WhatsApp send error:', err.response?.data || err.message);
+    return false;
   }
 }
 
@@ -239,13 +238,12 @@ app.post('/webhook', async (req, res) => {
     const msgId = msg.id;
     const msgType = msg.type;
 
-    // Duplicate check — same message ID dobara aaye toh ignore
+    // Duplicate check
     if (processedMessages.has(msgId)) {
       console.log('Duplicate message ignore kiya:', msgId);
       return;
     }
     processedMessages.add(msgId);
-    // 10 minute baad ID hata do memory se
     setTimeout(() => processedMessages.delete(msgId), 10 * 60 * 1000);
 
     // Non-text messages — ignore silently
@@ -280,8 +278,18 @@ app.post('/webhook', async (req, res) => {
     // Parse order with AI
     const parsed = await parseOrderWithAI(text);
 
-    // Agar order samajh nahi aaya — koi reply nahi
+    // Agar order samajh nahi aaya — koi reply nahi, kuch save nahi
     if (!parsed.understood || parsed.orders.length === 0) {
+      return;
+    }
+
+    // Pehle reply bhejo
+    const confirmation = formatOrderConfirmation(parsed.orders);
+    const replySent = await sendWhatsAppMessage(from, confirmation);
+
+    // Sirf tab save karo jab reply successfully gaya ho
+    if (!replySent) {
+      console.log('Reply fail hua — order save nahi kiya:', from);
       return;
     }
 
@@ -291,10 +299,6 @@ app.post('/webhook', async (req, res) => {
       items: parsed.orders,
       time: new Date().toLocaleTimeString('en-PK', { timeZone: 'Asia/Karachi' })
     };
-
-    // Confirm to customer
-    const confirmation = formatOrderConfirmation(parsed.orders);
-    await sendWhatsAppMessage(from, confirmation);
 
     // Save to Google Sheet
     await saveToSheet(from, parsed.orders);
